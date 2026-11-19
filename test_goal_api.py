@@ -1,18 +1,19 @@
 
 import os
+import json
 import requests
 
 BASE_URL = "https://api.goal-api.com/v1"
 API_KEY = os.getenv("GOAL_API_KEY")
 
 if not API_KEY:
-    raise SystemExit("ERRO: GOAL_API_KEY não encontrada.")
+    raise SystemExit("GOAL_API_KEY não encontrada")
 
 HEADERS = {
     "Authorization": f"Bearer {API_KEY}"
 }
 
-print("A testar ligação à GOAL API...")
+print("A testar estatísticas de cantos...")
 
 response = requests.get(
     f"{BASE_URL}/fixtures/live",
@@ -20,37 +21,27 @@ response = requests.get(
     timeout=30
 )
 
-print("Estado da API:", response.status_code)
+print("Estado API:", response.status_code)
 response.raise_for_status()
 
-result = response.json()
+data = response.json()
+fixtures = data.get("data", [])
 
-if not result.get("success"):
-    raise SystemExit("A API não devolveu sucesso.")
-
-fixtures = result.get("data", [])
-
-print("Jogos em direto:", len(fixtures))
-
-if not fixtures:
-    print("Não existem jogos em direto neste momento.")
-    raise SystemExit(0)
+print("Jogos encontrados:", len(fixtures))
 
 for fixture in fixtures[:5]:
 
     fixture_id = fixture.get("id")
 
-    home = fixture.get("homeTeamName", "Casa")
-    away = fixture.get("awayTeamName", "Fora")
-    minute = fixture.get("matchMinute", "?")
-
-    print("\n-------------------------")
-    print(f"Jogo: {home} - {away}")
-    print(f"Minuto: {minute}")
-    print(
-        f"Resultado: {fixture.get('homeTeamScore', 0)}"
-        f" - {fixture.get('awayTeamScore', 0)}"
-    )
+    print("\n================================")
+    print("JOGO:", fixture.get("homeTeamName"), "-", fixture.get("awayTeamName"))
+    print("MINUTO:", fixture.get("matchMinute"))
+    print("ESTADO DO JOGO:")
+    print(json.dumps({
+        key: value for key, value in fixture.items()
+        if "status" in key.lower() or "period" in key.lower()
+        or "minute" in key.lower()
+    }, indent=2, ensure_ascii=False))
 
     stats_response = requests.get(
         f"{BASE_URL}/fixtures/{fixture_id}/statistics",
@@ -61,29 +52,29 @@ for fixture in fixtures[:5]:
     print("Estado estatísticas:", stats_response.status_code)
 
     if stats_response.status_code != 200:
-        print("Estatísticas indisponíveis.")
         continue
 
-    stats_result = stats_response.json()
-    match = stats_result.get("data", {}).get("match", {})
+    stats_data = stats_response.json()
+    match = stats_data.get("data", {}).get("match", {})
 
     for period in ["fullTime", "firstHalf", "secondHalf"]:
 
-        period_stats = match.get(period, []) or []
+        stats = match.get(period, []) or []
+
+        print(f"\nPERÍODO: {period}")
 
         corners = next(
-            (item for item in period_stats
+            (item for item in stats
              if item.get("type") == "Corners"),
             None
         )
 
         if corners:
-            print(
-                f"Cantos ({period}): "
-                f"{corners.get('home', '?')} - "
-                f"{corners.get('away', '?')}"
-            )
+            print("CANTOS:", corners)
         else:
-            print(f"Cantos ({period}): indisponíveis")
+            print("Cantos não disponíveis")
 
-print("\nTeste concluído.")
+    print("\nESTRUTURA DOS DADOS:")
+    print(json.dumps(match, indent=2, ensure_ascii=False)[:5000])
+
+print("\nDIAGNÓSTICO TERMINADO")
