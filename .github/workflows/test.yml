@@ -1,0 +1,26 @@
+
+name: Teste Cantos à Vista
+
+on:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Obter código
+        uses: actions/checkout@v4
+
+      - name: Preparar Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Instalar dependências
+        run: pip install requests
+
+      - name: Testar GOAL API
+        env:
+          GOAL_API_KEY: ${{ secrets.GOAL_API_KEY }}
+        run: python test_goal_api.py
