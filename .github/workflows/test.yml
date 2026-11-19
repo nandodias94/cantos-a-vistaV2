@@ -17,6 +17,15 @@ jobs:
         with:
           python-version: '3.12'
 
+      - name: Verificar ficheiros
+        run: |
+          echo "LOCAL ATUAL:"
+          pwd
+          echo "FICHEIROS:"
+          ls -la
+          echo "PROCURAR FICHEIRO:"
+          find . -name "test_goal_api.py"
+
       - name: Instalar dependências
         run: pip install requests
 
