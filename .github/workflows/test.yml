@@ -1,11 +1,11 @@
 
-name: Teste Cantos à Vista
+name: Cantos à Vista V2
 
 on:
   workflow_dispatch:
 
 jobs:
-  test:
+  analyze:
     runs-on: ubuntu-latest
 
     steps:
@@ -17,19 +17,10 @@ jobs:
         with:
           python-version: '3.12'
 
-      - name: Verificar ficheiros
-        run: |
-          echo "LOCAL ATUAL:"
-          pwd
-          echo "FICHEIROS:"
-          ls -la
-          echo "PROCURAR FICHEIRO:"
-          find . -name "test_goal_api.py"
-
       - name: Instalar dependências
         run: pip install requests
 
-      - name: Testar GOAL API
+      - name: Executar motor de análise
         env:
           GOAL_API_KEY: ${{ secrets.GOAL_API_KEY }}
-        run: python test_goal_api.py
+        run: python motor_analise.py
