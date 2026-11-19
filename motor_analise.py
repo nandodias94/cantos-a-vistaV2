@@ -25,6 +25,23 @@ SECOND_HALF = {
 }
 
 
+def get_minute(value):
+    if not value:
+        return None
+
+    match = re.search(r"\d+", str(value))
+    return int(match.group()) if match else None
+
+
+def safe_int(value):
+    try:
+        if value is None:
+            return None
+        return int(value)
+    except (ValueError, TypeError):
+        return None
+
+
 def get_stat(stats, name):
     item = next(
         (x for x in stats if x.get("type") == name),
@@ -32,21 +49,15 @@ def get_stat(stats, name):
     )
 
     if not item:
-        return 0, 0
-
-    return (
-        int(item.get("home") or 0),
-        int(item.get("away") or 0)
-    )
-
-
-def get_minute(value):
-    if not value:
         return None
 
-    match = re.search(r"\d+", str(value))
+    home = safe_int(item.get("home"))
+    away = safe_int(item.get("away"))
 
-    return int(match.group()) if match else None
+    if home is None or away is None:
+        return None
+
+    return home, away
 
 
 def get_statistics(fixture_id):
@@ -59,106 +70,117 @@ def get_statistics(fixture_id):
     response.raise_for_status()
 
     result = response.json()
-
     return result.get("data", {}).get("match", {})
 
 
 def analyze_fixture(fixture):
 
-    fixture_id = fixture.get("id")
-    status = fixture.get("matchStatus")
-    period = fixture.get("matchPeriod")
+    home = fixture.get("homeTeamName", "Casa")
+    away = fixture.get("awayTeamName", "Fora")
     minute_text = fixture.get("matchMinute")
+    period = fixture.get("matchPeriod")
+    status = fixture.get("matchStatus")
+
     minute = get_minute(minute_text)
 
-    # Excluir jogos que não estejam em tempo regulamentar
+    print("\n--------------------------------")
+    print(f"JOGO: {home} - {away}")
+    print(f"MINUTO: {minute_text}")
+    print(f"PERÍODO: {period}")
+    print(f"ESTADO: {status}")
+
     if status != "LIVE":
-        return None
+        print("IGNORADO: jogo não está LIVE")
+        return False
 
     if period not in ["FIRST_HALF", "HALF_TIME", "SECOND_HALF"]:
-        return None
+        print("IGNORADO: período não elegível")
+        return False
 
-    # Identificar a janela da primeira parte
     first_half_window = (
-        period == "FIRST_HALF" and
-        minute is not None and
-        35 <= minute <= 45
+        period == "FIRST_HALF"
+        and minute is not None
+        and 35 <= minute <= 45
     ) or period == "HALF_TIME"
 
-    # Identificar a janela da segunda parte
     second_half_window = (
-        period == "SECOND_HALF" and
-        minute is not None and
-        75 <= minute <= 120
+        period == "SECOND_HALF"
+        and minute is not None
+        and 75 <= minute <= 99
     )
 
     if not first_half_window and not second_half_window:
-        return None
+        print("IGNORADO: fora das janelas de análise")
+        return False
 
-    match = get_statistics(fixture_id)
+    print("DENTRO DA JANELA: a consultar estatísticas...")
+
+    match = get_statistics(fixture.get("id"))
 
     full = match.get("fullTime", []) or []
     first = match.get("firstHalf", []) or []
 
-    total_home, total_away = get_stat(full, "Corners")
-    first_home, first_away = get_stat(first, "Corners")
+    if match.get("hasStatistics") is False:
+        print("IGNORADO: API ainda não disponibilizou estatísticas")
+        return False
 
-    dangerous_home, dangerous_away = get_stat(
-        full, "Dangerous Attacks"
-    )
+    total = get_stat(full, "Corners")
+    dangerous = get_stat(full, "Dangerous Attacks")
+    shots = get_stat(full, "On Target")
 
-    shots_home, shots_away = get_stat(
-        full, "On Target"
-    )
+    if total is None or dangerous is None or shots is None:
+        print("IGNORADO: faltam estatísticas essenciais")
+        return False
+
+    total_home, total_away = total
+    dangerous_home, dangerous_away = dangerous
+    shots_home, shots_away = shots
 
     total_corners = total_home + total_away
-    first_corners = first_home + first_away
+    dangerous_total = dangerous_home + dangerous_away
+    shots_total = shots_home + shots_away
 
-    second_corners = max(
-        0,
-        total_corners - first_corners
-    )
-
-    dangerous = dangerous_home + dangerous_away
-    shots = shots_home + shots_away
-
-    home = fixture.get("homeTeamName", "Casa")
-    away = fixture.get("awayTeamName", "Fora")
+    first_corners_data = get_stat(first, "Corners")
 
     if first_half_window:
-
-        criteria = FIRST_HALF
-
-        eligible = (
-            total_corners >= criteria["min_corners"]
-            and dangerous >= criteria["min_dangerous"]
-            and shots >= criteria["min_shots"]
-        )
-
-        market = "PRIMEIRA PARTE"
-
+        first_corners = total_corners
+        second_corners = 0
     else:
+        if first_corners_data is None:
+            print("IGNORADO: cantos da primeira parte indisponíveis")
+            return False
 
-        criteria = SECOND_HALF
+        first_corners = sum(first_corners_data)
+        second_corners = total_corners - first_corners
 
-        eligible = (
-            total_corners >= criteria["min_total_corners"]
-            and second_corners >= criteria["min_half_corners"]
-            and dangerous >= criteria["min_dangerous"]
-            and shots >= criteria["min_shots"]
-        )
+        if second_corners < 0:
+            print("IGNORADO: valores de cantos inconsistentes")
+            return False
 
-        market = "SEGUNDA PARTE"
-
-    print("\n-----------------------------")
-    print(f"JOGO: {home} - {away}")
-    print(f"MINUTO: {minute_text}")
-    print(f"PERÍODO: {market}")
     print(f"CANTOS TOTAIS: {total_corners}")
     print(f"CANTOS 1.ª PARTE: {first_corners}")
     print(f"CANTOS 2.ª PARTE: {second_corners}")
-    print(f"ATAQUES PERIGOSOS: {dangerous}")
-    print(f"REMATES À BALIZA: {shots}")
+    print(f"ATAQUES PERIGOSOS: {dangerous_total}")
+    print(f"REMATES À BALIZA: {shots_total}")
+
+    if first_half_window:
+        eligible = (
+            total_corners >= FIRST_HALF["min_corners"]
+            and dangerous_total >= FIRST_HALF["min_dangerous"]
+            and shots_total >= FIRST_HALF["min_shots"]
+        )
+        market = "PRIMEIRA PARTE"
+
+    else:
+        eligible = (
+            total_corners >= SECOND_HALF["min_total_corners"]
+            and second_corners >= SECOND_HALF["min_half_corners"]
+            and dangerous_total >= SECOND_HALF["min_dangerous"]
+            and shots_total >= SECOND_HALF["min_shots"]
+        )
+        market = "SEGUNDA PARTE"
+
+    print(f"MERCADO: {market}")
 
     if eligible:
         print("RESULTADO: OPORTUNIDADE ELEGÍVEL")
@@ -191,17 +213,16 @@ def main():
     eligible = 0
 
     for fixture in fixtures:
-
         try:
-            result = analyze_fixture(fixture)
-
-            if result:
+            if analyze_fixture(fixture):
                 eligible += 1
 
         except Exception as error:
             print(
-                "Erro ao analisar jogo:",
-                fixture.get("id"),
+                "ERRO AO ANALISAR:",
+                fixture.get("homeTeamName"),
+                "-",
+                fixture.get("awayTeamName"),
                 error
             )
 
