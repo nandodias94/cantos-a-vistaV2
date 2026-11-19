@@ -89,7 +89,7 @@ def analyze_fixture(fixture):
     print(f"PERÍODO: {period}")
     print(f"ESTADO: {status}")
 
-    if status != "LIVE":
+    if status not in ["LIVE", "HALF_TIME"]:
         print("IGNORADO: jogo não está LIVE")
         return False
 
