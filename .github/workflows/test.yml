@@ -3,6 +3,15 @@ name: Cantos à Vista V2
 
 on:
   workflow_dispatch:
+  schedule:
+    - cron: '*/5 * * * *'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: cantos-a-vista-v2
+  cancel-in-progress: false
 
 jobs:
   analyze:
@@ -23,4 +32,9 @@ jobs:
       - name: Executar motor de análise
         env:
           GOAL_API_KEY: ${{ secrets.GOAL_API_KEY }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          GITHUB_REF_NAME: ${{ github.ref_name }}
         run: python motor_analise.py
